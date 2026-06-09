@@ -3,131 +3,171 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Flask Pinball Game</title>
+    <title>Retro Neon Pinball</title>
     <style>
         body {
-            background-color: #222;
-            color: white;
-            font-family: 'Arial', sans-serif;
+            background-color: #0f0f1a;
+            color: #fff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
             height: 100vh;
             margin: 0;
+            overflow: hidden;
         }
         h1 {
+            margin-bottom: 5px;
+            color: #00ffcc;
+            text-shadow: 0 0 10px rgba(0, 255, 204, 0.5);
+            font-size: 28px;
+        }
+        #ui-container {
+            display: flex;
+            justify-content: space-between;
+            width: 400px;
             margin-bottom: 10px;
+            font-size: 18px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
         }
-        #gameContainer {
-            position: relative;
-        }
+        #score { color: #ff00ff; text-shadow: 0 0 8px rgba(255, 0, 255, 0.5); }
+        #lives { color: #00ffcc; text-shadow: 0 0 8px rgba(0, 255, 204, 0.5); }
         canvas {
-            background: #111;
-            border: 4px solid #444;
-            border-radius: 10px;
-            box-shadow: 0 0 20px rgba(0,0,0,0.8);
+            background: #121225;
+            border: 4px solid #333366;
+            border-radius: 15px;
+            box-shadow: 0 0 30px rgba(0, 0, 0, 0.7), inset 0 0 20px rgba(0,0,0,0.5);
         }
         .controls {
             margin-top: 15px;
-            font-size: 14px;
-            color: #aaa;
+            font-size: 13px;
+            color: #888;
             text-align: center;
+            max-width: 400px;
+            line-height: 1.5;
         }
         .key {
-            background: #444;
-            color: #fff;
-            padding: 2px 6px;
+            background: #222244;
+            color: #00ffcc;
+            padding: 3px 8px;
             border-radius: 4px;
+            border: 1px solid #444488;
             font-weight: bold;
         }
     </style>
 </head>
 <body>
 
-    <h1>Flask Pinball</h1>
-    <div id="gameContainer">
-        <canvas id="pinballCanvas" width="400" height="600"></canvas>
+    <h1>NEON PINBALL</h1>
+    
+    <div id="ui-container">
+        <div id="score">Punti: 0</div>
+        <div id="lives">Vite: 3</div>
     </div>
+
+    <canvas id="pinballCanvas" width="400" height="600"></canvas>
     
     <div class="controls">
-        Controlli: <span class="key">Freccia Sinistra</span> Aletta Sx | 
-        <span class="key">Freccia Destra</span> Aletta Dx | 
-        <span class="key">Spazio</span> Lancia Pallina / Reset
+        <span class="key">←</span> Aletta Sx &nbsp;|&nbsp; 
+        <span class="key">→</span> Aletta Dx &nbsp;|&nbsp; 
+        <span class="key">Spazio</span> Lancia (Tieni premuto per caricare la molla)
     </div>
 
     <script>
         const canvas = document.getElementById('pinballCanvas');
         const ctx = canvas.getContext('2d');
 
-        // Stato del Gioco
-        let score = 0;
-        let gameOver = false;
+        // UI Elements
+        const scoreDisplay = document.getElementById('score');
+        const livesDisplay = document.getElementById('lives');
 
-        // Fisica della Pallina
+        // Stato di gioco
+        let score = 0;
+        let lives = 3;
+        let gameOver = false;
+        let ballReady = true; 
+        let plungerPlunge = 0; // Forza della molla
+
+        // Fisica Pallina
         let ball = {
             x: 380,
-            y: 550,
+            y: 560,
             vx: 0,
             vy: 0,
-            radius: 10,
-            gravity: 0.2,
-            bounce: 0.6
+            radius: 9,
+            gravity: 0.25,
+            bounce: 0.55
         };
 
-        // Ostacoli / Respingenti (Bumpers)
+        // Ostacoli e Bumpers dinamici
         const bumpers = [
-            { x: 120, y: 150, radius: 25, color: '#ff3366', points: 100 },
-            { x: 280, y: 150, radius: 25, color: '#ff3366', points: 100 },
-            { x: 200, y: 250, radius: 30, color: '#33ccff', points: 200 }
+            { x: 130, y: 140, radius: 24, color: '#ff00ff', points: 100, glow: '#ff00ff' },
+            { x: 250, y: 140, radius: 24, color: '#ff00ff', points: 100, glow: '#ff00ff' },
+            { x: 190, y: 230, radius: 30, color: '#00ffff', points: 250, glow: '#00ffff' },
+            { x: 60, y: 280, radius: 15, color: '#ffff00', points: 50, glow: '#ffff00' },
+            { x: 320, y: 280, radius: 15, color: '#ffff00', points: 50, glow: '#ffff00' }
         ];
 
-        // Alette (Flipper)
-        let leftFlipper = { x: 120, y: 520, length: 60, angle: 0.3, targetAngle: 0.3, baseAngle: 0.3, upAngle: -0.4, side: 'left' };
-        let rightFlipper = { x: 280, y: 520, length: 60, angle: Math.PI - 0.3, targetAngle: Math.PI - 0.3, baseAngle: Math.PI - 0.3, upAngle: Math.PI + 0.4, side: 'right' };
+        // Alette (Flipper) perfezionate
+        let leftFlipper = { x: 110, y: 530, length: 65, angle: 0.4, targetAngle: 0.4, baseAngle: 0.4, upAngle: -0.5 };
+        let rightFlipper = { x: 270, y: 530, length: 65, angle: Math.PI - 0.4, targetAngle: Math.PI - 0.4, baseAngle: Math.PI - 0.4, upAngle: Math.PI + 0.5 };
 
-        // Input da tastiera
+        // Gestione Input
+        let keys = {};
         window.addEventListener('keydown', (e) => {
+            keys[e.key] = true;
             if (e.key === 'ArrowLeft') leftFlipper.targetAngle = leftFlipper.upAngle;
             if (e.key === 'ArrowRight') rightFlipper.targetAngle = rightFlipper.upAngle;
-            if (e.key === ' ' || e.key === 'Spacebar') {
-                if (gameOver) {
-                    resetGame();
-                } else if (ball.x > 360 && ball.y > 500) {
-                    // Lancio iniziale (se la pallina è nel canale di destra)
-                    ball.vy = -12;
-                    ball.vx = -1 - Math.random() * 2;
-                }
+            
+            if ((e.key === ' ' || e.key === 'Spacebar') && gameOver) {
+                resetGame();
             }
         });
 
         window.addEventListener('keyup', (e) => {
+            keys[e.key] = false;
             if (e.key === 'ArrowLeft') leftFlipper.targetAngle = leftFlipper.baseAngle;
             if (e.key === 'ArrowRight') rightFlipper.targetAngle = rightFlipper.baseAngle;
+            
+            // Rilascio molla di lancio
+            if ((e.key === ' ' || e.key === 'Spacebar') && ballReady && !gameOver) {
+                ball.vy = -14 - (plungerPlunge * 0.1); // Spinta custom basata sul caricamento
+                ball.vx = -1 - Math.random() * 2;
+                ballReady = false;
+                plungerPlunge = 0;
+            }
         });
 
         function resetGame() {
-            ball.x = 380;
-            ball.y = 550;
-            ball.vx = 0;
-            ball.vy = 0;
             score = 0;
+            lives = 3;
             gameOver = false;
+            scoreDisplay.innerText = `Punti: ${score}`;
+            livesDisplay.innerText = `Vite: ${lives}`;
+            resetBall();
         }
 
-        // Funzione per calcolare la collisione segmento-cerchio (per le alette)
+        function resetBall() {
+            ball.x = 380;
+            ball.y = 560;
+            ball.vx = 0;
+            ball.vy = 0;
+            ballReady = true;
+        }
+
         function checkFlipperCollision(flipper) {
             let tipX = flipper.x + Math.cos(flipper.angle) * flipper.length;
             let tipY = flipper.y + Math.sin(flipper.angle) * flipper.length;
 
-            // Vettore aletta
             let dx = tipX - flipper.x;
             let dy = tipY - flipper.y;
             let lenSq = dx * dx + dy * dy;
 
-            // Proiezione della pallina sul segmento dell'aletta
             let t = ((ball.x - flipper.x) * dx + (ball.y - flipper.y) * dy) / lenSq;
-            t = Math.max(0, Math.min(1, t)); // Vincola al segmento
+            t = Math.max(0, Math.min(1, t));
 
             let closestX = flipper.x + t * dx;
             let closestY = flipper.y + t * dy;
@@ -137,94 +177,116 @@
             let distance = Math.sqrt(distDx * distDx + distDy * distDy);
 
             if (distance < ball.radius) {
-                // Spingi fuori la pallina
                 let nx = distDx / distance;
                 let ny = distDy / distance;
                 ball.x = closestX + nx * ball.radius;
                 ball.y = closestY + ny * ball.radius;
 
-                // Calcola velocità di rimbalzo + spinta del movimento dell'aletta
                 let speed = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy);
-                let flipperVelocity = (flipper.targetAngle !== flipper.baseAngle) ? -10 : 2;
-                
-                ball.vx = nx * (speed * ball.bounce + Math.abs(flipperVelocity) * 0.5);
-                ball.vy = ny * (speed * ball.bounce + Math.abs(flipperVelocity));
+                // Se l'aletta sta salendo, dà una spinta massiccia
+                let isMovingUp = (flipper.targetAngle === flipper.upAngle);
+                let kick = isMovingUp ? 12 : 1;
+
+                ball.vx = nx * (speed * ball.bounce + kick * 0.4);
+                ball.vy = ny * (speed * ball.bounce + kick);
             }
         }
 
-        // Aggiornamento logica di gioco
         function update() {
             if (gameOver) return;
 
-            // Applica gravità
+            if (ballReady) {
+                // Carica la molla se tieni premuto spazio
+                if (keys[' '] || keys['Spacebar']) {
+                    if (plungerPlunge < 50) plungerPlunge += 2;
+                }
+                return;
+            }
+
+            // Fisica standard
             ball.vy += ball.gravity;
             ball.x += ball.vx;
             ball.y += ball.vy;
 
-            // Movimento fluido delle alette verso l'angolo target
-            leftFlipper.angle += (leftFlipper.targetAngle - leftFlipper.angle) * 0.4;
-            rightFlipper.angle += (rightFlipper.targetAngle - rightFlipper.angle) * 0.4;
+            // Rotazione fluida alette
+            leftFlipper.angle += (leftFlipper.targetAngle - leftFlipper.angle) * 0.5;
+            rightFlipper.angle += (rightFlipper.targetAngle - rightFlipper.angle) * 0.5;
 
-            // Collisioni con i muri perimetrali
+            // Muri esterni
             if (ball.x - ball.radius < 0) { ball.x = ball.radius; ball.vx *= -ball.bounce; }
             if (ball.x + ball.radius > canvas.width) { ball.x = canvas.width - ball.radius; ball.vx *= -ball.bounce; }
             if (ball.y - ball.radius < 0) { ball.y = ball.radius; ball.vy *= -ball.bounce; }
 
-            // Canale di lancio (muro divisorio destro a x=360)
-            if (ball.x > 360 && ball.x < 365 && ball.y > 150) {
+            // Canale di lancio (Parete a x=360) con invito curvo in alto
+            if (ball.x > 360 && ball.x < 364 && ball.y > 100) {
                 if (ball.vx < 0) { ball.x = 360 - ball.radius; ball.vx *= -ball.bounce; }
-                else if (ball.vx > 0) { ball.x = 365 + ball.radius; ball.vx *= -ball.bounce; }
             }
 
-            // Collisioni con i Bumpers (Respingenti circolari)
+            // Collisioni Bumpers
             bumpers.forEach(bumper => {
                 let dx = ball.x - bumper.x;
                 let dy = ball.y - bumper.y;
                 let dist = Math.sqrt(dx * dx + dy * dy);
 
                 if (dist < ball.radius + bumper.radius) {
-                    // Angolo di impatto
                     let nx = dx / dist;
                     let ny = dy / dist;
-
-                    // Posiziona fuori dal bumper
                     ball.x = bumper.x + nx * (ball.radius + bumper.radius);
                     ball.y = bumper.y + ny * (ball.radius + bumper.radius);
 
-                    // Rifletti la velocità e dai una spinta extra (effetto molla)
                     let dot = ball.vx * nx + ball.vy * ny;
-                    ball.vx = (ball.vx - 2 * dot * nx) * 1.3;
-                    ball.vy = (ball.vy - 2 * dot * ny) * 1.3;
+                    ball.vx = (ball.vx - 2 * dot * nx) * 1.4;
+                    ball.vy = (ball.vy - 2 * dot * ny) * 1.4;
 
                     score += bumper.points;
+                    scoreDisplay.innerText = `Punti: ${score}`;
                 }
             });
 
-            // Collisioni con le Alette
+            // Collisione alette
             checkFlipperCollision(leftFlipper);
             checkFlipperCollision(rightFlipper);
 
-            // Game Over (La pallina cade in fondo)
+            // Controllo della caduta (Perdere una vita)
             if (ball.y > canvas.height) {
-                gameOver = true;
+                lives--;
+                livesDisplay.innerText = `Vite: ${lives}`;
+                
+                if (lives <= 0) {
+                    gameOver = true;
+                } else {
+                    resetBall();
+                }
             }
         }
 
-        // Rendering grafico
         function draw() {
-            // Sfondo
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // Canale di lancio (linea estetica)
-            ctx.strokeStyle = '#444';
+            // Effetto Neon Generale per gli elementi luminosi
+            ctx.shadowBlur = 0; 
+
+            // Linea del canale di lancio e curva superiore per indirizzare la palla
+            ctx.strokeStyle = '#333366';
             ctx.lineWidth = 4;
             ctx.beginPath();
             ctx.moveTo(360, canvas.height);
-            ctx.lineTo(360, 150);
+            ctx.lineTo(360, 100);
+            ctx.arcTo(360, 30, 300, 30, 40); // Curva che devia la palla a sinistra
             ctx.stroke();
 
-            // Disegna Bumpers
+            // Pareti di invito in basso (i triangoli sopra le alette per far scivolare la palla)
+            ctx.strokeStyle = '#222244';
+            ctx.lineWidth = 3;
+            // Sinistra
+            ctx.beginPath(); ctx.moveTo(0, 450); ctx.lineTo(80, 500); ctx.lineTo(0, 500); ctx.stroke();
+            // Destra
+            ctx.beginPath(); ctx.moveTo(400, 450); ctx.lineTo(300, 500); ctx.lineTo(400, 500); ctx.stroke();
+
+            // Disegna Bumpers Luminosi
             bumpers.forEach(bumper => {
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = bumper.glow;
                 ctx.fillStyle = bumper.color;
                 ctx.beginPath();
                 ctx.arc(bumper.x, bumper.y, bumper.radius, 0, Math.PI * 2);
@@ -234,53 +296,63 @@
                 ctx.stroke();
             });
 
-            // Disegna Aletta Sinistra
+            // Disegna Alette con Neon
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = '#00ffcc';
             ctx.strokeStyle = '#00ffcc';
             ctx.lineWidth = 8;
             ctx.lineCap = 'round';
+            
+            // Sx
             ctx.beginPath();
             ctx.moveTo(leftFlipper.x, leftFlipper.y);
             ctx.lineTo(leftFlipper.x + Math.cos(leftFlipper.angle) * leftFlipper.length, leftFlipper.y + Math.sin(leftFlipper.angle) * leftFlipper.length);
             ctx.stroke();
 
-            // Disegna Aletta Destra
-            ctx.strokeStyle = '#00ffcc';
+            // Dx
             ctx.beginPath();
             ctx.moveTo(rightFlipper.x, rightFlipper.y);
             ctx.lineTo(rightFlipper.x + Math.cos(rightFlipper.angle) * rightFlipper.length, rightFlipper.y + Math.sin(rightFlipper.angle) * rightFlipper.length);
             ctx.stroke();
 
-            // Disegna Pallina
-            ctx.fillStyle = '#fff';
+            // Molla di lancio (visiva)
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = '#ff00ff';
+            ctx.fillRect(372, 580 + plungerPlunge, 16, 20 - plungerPlunge);
+
+            // Disegna Pallina (Effetto metallico lucido)
+            ctx.shadowBlur = 8;
+            ctx.shadowColor = '#fff';
+            ctx.fillStyle = '#ffffff';
             ctx.beginPath();
             ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
             ctx.fill();
 
-            // Interfaccia Testo (Punteggio)
-            ctx.fillStyle = '#fff';
-            ctx.font = '20px Arial';
-            ctx.fillText(`Score: ${score}`, 20, 40);
-
+            // Schermata di Game Over
             if (gameOver) {
-                ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = 'rgba(10, 10, 26, 0.85)';
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
-                ctx.fillStyle = '#ff3333';
-                ctx.font = '40px Arial';
-                ctx.fillText("GAME OVER", canvas.width / 2 - 120, canvas.height / 2);
+                
+                ctx.fillStyle = '#ff0055';
+                ctx.font = 'bold 36px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText("GAME OVER", canvas.width / 2, canvas.height / 2 - 20);
+                
                 ctx.fillStyle = '#fff';
-                ctx.font = '20px Arial';
-                ctx.fillText("Premi SPAZIO per ricominciare", canvas.width / 2 - 130, canvas.height / 2 + 50);
+                ctx.font = '16px Arial';
+                ctx.fillText(`Punteggio Finale: ${score}`, canvas.width / 2, canvas.height / 2 + 20);
+                ctx.fillText("Premi SPAZIO per rigiocare", canvas.width / 2, canvas.height / 2 + 60);
+                ctx.textAlign = 'start'; // reset
             }
         }
 
-        // Game Loop principale
         function gameLoop() {
             update();
             draw();
             requestAnimationFrame(gameLoop);
         }
 
-        // Avvia il gioco
         gameLoop();
     </script>
 </body>
