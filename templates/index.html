@@ -1,14 +1,14 @@
 <!DOCTYPE html>
-<html lang="it">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Retro Neon Pinball</title>
+    <title>Arcade Neon Pinball Pro</title>
     <style>
         body {
-            background-color: #0f0f1a;
+            background-color: #05050a;
             color: #fff;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: 'Consolas', 'Courier New', monospace;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -18,62 +18,64 @@
             overflow: hidden;
         }
         h1 {
-            margin-bottom: 5px;
-            color: #00ffcc;
-            text-shadow: 0 0 10px rgba(0, 255, 204, 0.5);
-            font-size: 28px;
+            margin-bottom: 2px;
+            color: #ff0055;
+            text-shadow: 0 0 15px rgba(255, 0, 85, 0.8);
+            font-size: 24px;
+            letter-spacing: 4px;
         }
-        #ui-container {
+        #ui-board {
             display: flex;
             justify-content: space-between;
-            width: 400px;
-            margin-bottom: 10px;
-            font-size: 18px;
-            font-weight: bold;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-        #score { color: #ff00ff; text-shadow: 0 0 8px rgba(255, 0, 255, 0.5); }
-        #lives { color: #00ffcc; text-shadow: 0 0 8px rgba(0, 255, 204, 0.5); }
-        canvas {
-            background: #121225;
-            border: 4px solid #333366;
-            border-radius: 15px;
-            box-shadow: 0 0 30px rgba(0, 0, 0, 0.7), inset 0 0 20px rgba(0,0,0,0.5);
-        }
-        .controls {
-            margin-top: 15px;
+            width: 420px;
+            margin-bottom: 6px;
             font-size: 13px;
-            color: #888;
+            background: #0b0b1e;
+            padding: 10px 14px;
+            border-radius: 6px;
+            border: 1px solid #1a1a3a;
+            box-sizing: border-box;
+        }
+        .stat-val { font-weight: bold; color: #00ffcc; text-shadow: 0 0 8px rgba(0, 255, 204, 0.4); }
+        #score-val { color: #ff00ff; text-shadow: 0 0 8px rgba(255, 0, 255, 0.4); }
+        canvas {
+            background: #050512;
+            border: 4px solid #161633;
+            border-radius: 16px;
+            box-shadow: 0 0 50px rgba(0, 0, 0, 0.95), inset 0 0 35px rgba(0, 0, 0, 0.9);
+        }
+        .instructions {
+            margin-top: 8px;
+            font-size: 11px;
+            color: #444466;
             text-align: center;
-            max-width: 400px;
             line-height: 1.5;
         }
-        .key {
-            background: #222244;
+        .kbd-btn {
+            background: #0d0d21;
             color: #00ffcc;
-            padding: 3px 8px;
-            border-radius: 4px;
-            border: 1px solid #444488;
-            font-weight: bold;
+            padding: 1px 5px;
+            border-radius: 3px;
+            border: 1px solid #1c1c44;
         }
     </style>
 </head>
 <body>
 
-    <h1>NEON PINBALL</h1>
+    <h1>NEON ARCADE PINBALL</h1>
     
-    <div id="ui-container">
-        <div id="score">Punti: 0</div>
-        <div id="lives">Vite: 3</div>
+    <div id="ui-board">
+        <div>SCORE: <span id="score-val" class="stat-val">0</span></div>
+        <div>MULTIPLIER: <span id="multiplier-val" class="stat-val">1X</span></div>
+        <div>BALLS: <span id="lives-val" class="stat-val">3</span></div>
     </div>
 
-    <canvas id="pinballCanvas" width="400" height="600"></canvas>
+    <canvas id="pinballCanvas" width="420" height="650"></canvas>
     
-    <div class="controls">
-        <span class="key">←</span> Aletta Sx &nbsp;|&nbsp; 
-        <span class="key">→</span> Aletta Dx &nbsp;|&nbsp; 
-        <span class="key">Spazio</span> Lancia (Tieni premuto per caricare la molla)
+    <div class="instructions">
+        [<span class="kbd-btn">←</span> Left Arrow] Flipper &nbsp;|&nbsp; 
+        [<span class="kbd-btn">→</span> Right Arrow] Flipper <br>
+        [<span class="kbd-btn">Spacebar</span>] Hold to charge Plunger / Release to LAUNCH
     </div>
 
     <script>
@@ -81,50 +83,83 @@
         const ctx = canvas.getContext('2d');
 
         // UI Elements
-        const scoreDisplay = document.getElementById('score');
-        const livesDisplay = document.getElementById('lives');
+        const scoreUI = document.getElementById('score-val');
+        const multiplierUI = document.getElementById('multiplier-val');
+        const livesUI = document.getElementById('lives-val');
 
-        // Stato di gioco
+        // Core Game States
         let score = 0;
+        let multiplier = 1;
         let lives = 3;
         let gameOver = false;
-        let ballReady = true; 
-        let plungerPlunge = 0; // Forza della molla
+        let ballReady = true;
+        let plungerForce = 0;
+        let keys = {};
+        let particles = [];
+        let ballTrail = []; 
 
-        // Fisica Pallina
-        let ball = {
-            x: 380,
-            y: 560,
-            vx: 0,
-            vy: 0,
-            radius: 9,
-            gravity: 0.25,
-            bounce: 0.55
-        };
+        const physics = { gravity: 0.28, maxVelocity: 22 };
+        let ball = { x: 406, y: 615, vx: 0, vy: 0, radius: 8, bounce: 0.55 };
 
-        // Ostacoli e Bumpers dinamici
+        // 1. Neon Circular Bumpers
         const bumpers = [
-            { x: 130, y: 140, radius: 24, color: '#ff00ff', points: 100, glow: '#ff00ff' },
-            { x: 250, y: 140, radius: 24, color: '#ff00ff', points: 100, glow: '#ff00ff' },
-            { x: 190, y: 230, radius: 30, color: '#00ffff', points: 250, glow: '#00ffff' },
-            { x: 60, y: 280, radius: 15, color: '#ffff00', points: 50, glow: '#ffff00' },
-            { x: 320, y: 280, radius: 15, color: '#ffff00', points: 50, glow: '#ffff00' }
+            { x: 150, y: 190, radius: 24, color: '#ff0055', points: 150, glow: '#ff0055', activeTimer: 0 },
+            { x: 250, y: 190, radius: 24, color: '#ff0055', points: 150, glow: '#ff0055', activeTimer: 0 },
+            { x: 200, y: 270, radius: 28, color: '#00ffff', points: 300, glow: '#00ffff', activeTimer: 0 }
         ];
 
-        // Alette (Flipper) perfezionate
-        let leftFlipper = { x: 110, y: 530, length: 65, angle: 0.4, targetAngle: 0.4, baseAngle: 0.4, upAngle: -0.5 };
-        let rightFlipper = { x: 270, y: 530, length: 65, angle: Math.PI - 0.4, targetAngle: Math.PI - 0.4, baseAngle: Math.PI - 0.4, upAngle: Math.PI + 0.5 };
+        // 2. Top Rollover Lanes
+        const lanes = [
+            { x1: 110, x2: 145, y: 75, hit: false, label: 'A', color: '#ffea00' },
+            { x1: 185, x2: 220, y: 75, hit: false, label: 'B', color: '#ffea00' },
+            { x1: 260, x2: 295, y: 75, hit: false, label: 'C', color: '#ffea00' }
+        ];
 
-        // Gestione Input
-        let keys = {};
+        // 3. Slingshots (Active Triangle Kickers)
+        const slingshots = [
+            { points: [ {x: 55, y: 480}, {x: 105, y: 525}, {x: 55, y: 525} ], kickDir: {x: 0.8, y: -0.6}, activeTimer: 0 },
+            { points: [ {x: 345, y: 480}, {x: 295, y: 525}, {x: 345, y: 525} ], kickDir: {x: -0.8, y: -0.6}, activeTimer: 0 }
+        ];
+
+        // 4. Drop Targets (Left Wall)
+        let dropTargets = [
+            { x: 15, y: 190, w: 10, h: 25, active: true, color: '#da70d6' },
+            { x: 15, y: 225, w: 10, h: 25, active: true, color: '#da70d6' },
+            { x: 15, y: 260, w: 10, h: 25, active: true, color: '#da70d6' }
+        ];
+
+        // 5. Kinetic Spinner Gate (Right Side)
+        let spinner = { x: 340, y: 220, length: 26, angle: 0, angularVelocity: 0, activeTimer: 0 };
+
+        // 6. Flippers Configuration
+        let leftFlipper = { x: 135, y: 570, length: 68, angle: 0.35, targetAngle: 0.35, baseAngle: 0.35, upAngle: -0.45 };
+        let rightFlipper = { x: 265, y: 570, length: 68, angle: Math.PI - 0.35, targetAngle: Math.PI - 0.35, baseAngle: Math.PI - 0.35, upAngle: Math.PI + 0.45 };
+
+        // Rigid Environmental Geometry (Static Walls)
+        const staticWalls = [
+            // Outer Framework Boundaries
+            {x1: 0, y1: 650, x2: 0, y2: 120},
+            {x1: 390, y1: 650, x2: 390, y2: 140}, // Shooter Lane left partition
+            {x1: 420, y1: 650, x2: 420, y2: 120}, // Shooter Lane right outer wall
+            
+            // Lower Inlanes / Outlanes Dividers
+            {x1: 0, y1: 430, x2: 55, y2: 480}, {x1: 55, y1: 480, x2: 55, y2: 550}, {x1: 95, y1: 490, x2: 130, y2: 560}, 
+            {x1: 390, y1: 430, x2: 345, y2: 480}, {x1: 345, y1: 480, x2: 345, y2: 550}, {x1: 305, y1: 490, x2: 270, y2: 560}, 
+
+            // Bottom Drain Inclines
+            {x1: 0, y1: 590, x2: 85, y2: 630}, {x1: 390, y1: 590, x2: 315, y2: 630},
+
+            // High Top Curved Ceiling Segments (Outer Guide Rails)
+            {x1: 420, y1: 120, x2: 408, y2: 70}, {x1: 408, y1: 70, x2: 385, y2: 35},
+            {x1: 385, y1: 35, x2: 345, y2: 12}, {x1: 345, y1: 12, x2: 290, y2: 5}, {x1: 290, y1: 5, x2: 0, y2: 5}
+        ];
+
+        // Input Observers
         window.addEventListener('keydown', (e) => {
             keys[e.key] = true;
             if (e.key === 'ArrowLeft') leftFlipper.targetAngle = leftFlipper.upAngle;
             if (e.key === 'ArrowRight') rightFlipper.targetAngle = rightFlipper.upAngle;
-            
-            if ((e.key === ' ' || e.key === 'Spacebar') && gameOver) {
-                resetGame();
-            }
+            if ((e.key === ' ' || e.key === 'Spacebar') && gameOver) resetGame();
         });
 
         window.addEventListener('keyup', (e) => {
@@ -132,63 +167,84 @@
             if (e.key === 'ArrowLeft') leftFlipper.targetAngle = leftFlipper.baseAngle;
             if (e.key === 'ArrowRight') rightFlipper.targetAngle = rightFlipper.baseAngle;
             
-            // Rilascio molla di lancio
+            // Trigger Spring Launch Mechanics
             if ((e.key === ' ' || e.key === 'Spacebar') && ballReady && !gameOver) {
-                ball.vy = -14 - (plungerPlunge * 0.1); // Spinta custom basata sul caricamento
-                ball.vx = -1 - Math.random() * 2;
+                ball.vy = -16 - (plungerForce * 0.14);
+                ball.vx = 0;
                 ballReady = false;
-                plungerPlunge = 0;
+                plungerForce = 0;
             }
         });
 
-        function resetGame() {
-            score = 0;
-            lives = 3;
-            gameOver = false;
-            scoreDisplay.innerText = `Punti: ${score}`;
-            livesDisplay.innerText = `Vite: ${lives}`;
-            resetBall();
+        function spawnParticles(x, y, color, count = 12) {
+            for(let i=0; i<count; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = 1 + Math.random() * 4;
+                particles.push({
+                    x: x, y: y,
+                    vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+                    life: 1.0, decay: 0.04, color: color
+                });
+            }
         }
 
         function resetBall() {
-            ball.x = 380;
-            ball.y = 560;
-            ball.vx = 0;
-            ball.vy = 0;
-            ballReady = true;
+            ball.x = 405; ball.y = 615; ball.vx = 0; ball.vy = 0;
+            ballReady = true; ballTrail = [];
+        }
+
+        function resetGame() {
+            score = 0; multiplier = 1; lives = 3; gameOver = false;
+            scoreUI.innerText = score; multiplierUI.innerText = "1X"; livesUI.innerText = lives;
+            lanes.forEach(l => l.hit = false);
+            dropTargets.forEach(t => t.active = true);
+            resetBall();
+        }
+
+        function checkSegmentCollision(wall, activeKickerMultiplier = 1.0) {
+            let dx = wall.x2 - wall.x1; let dy = wall.y2 - wall.y1;
+            let segmentLenSq = dx * dx + dy * dy;
+            if (segmentLenSq === 0) return false;
+            
+            let t = Math.max(0, Math.min(1, ((ball.x - wall.x1) * dx + (ball.y - wall.y1) * dy) / segmentLenSq));
+            let closestX = wall.x1 + t * dx; let closestY = wall.y1 + t * dy;
+            let distX = ball.x - closestX; let distY = ball.y - closestY;
+            let distance = Math.sqrt(distX * distX + distY * distY);
+
+            if (distance < ball.radius) {
+                let nx = distX / distance; let ny = distY / distance;
+                ball.x = closestX + nx * ball.radius; ball.y = closestY + ny * ball.radius;
+                let dotProduct = ball.vx * nx + ball.vy * ny;
+                ball.vx = (ball.vx - 2 * dotProduct * nx) * ball.bounce * activeKickerMultiplier;
+                ball.vy = (ball.vy - 2 * dotProduct * ny) * ball.bounce * activeKickerMultiplier;
+                return true;
+            }
+            return false;
         }
 
         function checkFlipperCollision(flipper) {
             let tipX = flipper.x + Math.cos(flipper.angle) * flipper.length;
             let tipY = flipper.y + Math.sin(flipper.angle) * flipper.length;
-
-            let dx = tipX - flipper.x;
-            let dy = tipY - flipper.y;
+            let wall = { x1: flipper.x, y1: flipper.y, x2: tipX, y2: tipY };
+            
+            let dx = wall.x2 - wall.x1; let dy = wall.y2 - wall.y1;
             let lenSq = dx * dx + dy * dy;
+            let t = Math.max(0, Math.min(1, ((ball.x - wall.x1) * dx + (ball.y - wall.y1) * dy) / lenSq));
 
-            let t = ((ball.x - flipper.x) * dx + (ball.y - flipper.y) * dy) / lenSq;
-            t = Math.max(0, Math.min(1, t));
+            let closestX = wall.x1 + t * dx; let closestY = wall.y1 + t * dy;
+            let distX = ball.x - closestX; let distY = ball.y - closestY;
+            let dist = Math.sqrt(distX * distX + distY * distY);
 
-            let closestX = flipper.x + t * dx;
-            let closestY = flipper.y + t * dy;
+            if (dist < ball.radius) {
+                let nx = distX / dist; let ny = distY / dist;
+                ball.x = closestX + nx * ball.radius; ball.y = closestY + ny * ball.radius;
 
-            let distDx = ball.x - closestX;
-            let distDy = ball.y - closestY;
-            let distance = Math.sqrt(distDx * distDx + distDy * distDy);
+                let isMovingUp = (flipper.targetAngle === flipper.upAngle && Math.abs(flipper.angle - flipper.targetAngle) > 0.04);
+                let speedPayload = isMovingUp ? 14 : 1.0;
 
-            if (distance < ball.radius) {
-                let nx = distDx / distance;
-                let ny = distDy / distance;
-                ball.x = closestX + nx * ball.radius;
-                ball.y = closestY + ny * ball.radius;
-
-                let speed = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy);
-                // Se l'aletta sta salendo, dà una spinta massiccia
-                let isMovingUp = (flipper.targetAngle === flipper.upAngle);
-                let kick = isMovingUp ? 12 : 1;
-
-                ball.vx = nx * (speed * ball.bounce + kick * 0.4);
-                ball.vy = ny * (speed * ball.bounce + kick);
+                let dot = ball.vx * nx + ball.vy * ny;
+                ball.vx = (ball.vx - 2 * dot * nx) * ball.bounce + (nx * speedPayload * 0.4);
+                ball.vy = (ball.vy - 2 * dot * ny) * ball.bounce + (ny * speedPayload);
             }
         }
 
@@ -196,163 +252,231 @@
             if (gameOver) return;
 
             if (ballReady) {
-                // Carica la molla se tieni premuto spazio
-                if (keys[' '] || keys['Spacebar']) {
-                    if (plungerPlunge < 50) plungerPlunge += 2;
-                }
+                if (keys[' '] || keys['Spacebar']) { if (plungerForce < 50) plungerForce += 2.2; }
                 return;
             }
 
-            // Fisica standard
-            ball.vy += ball.gravity;
-            ball.x += ball.vx;
-            ball.y += ball.vy;
-
-            // Rotazione fluida alette
-            leftFlipper.angle += (leftFlipper.targetAngle - leftFlipper.angle) * 0.5;
-            rightFlipper.angle += (rightFlipper.targetAngle - rightFlipper.angle) * 0.5;
-
-            // Muri esterni
-            if (ball.x - ball.radius < 0) { ball.x = ball.radius; ball.vx *= -ball.bounce; }
-            if (ball.x + ball.radius > canvas.width) { ball.x = canvas.width - ball.radius; ball.vx *= -ball.bounce; }
-            if (ball.y - ball.radius < 0) { ball.y = ball.radius; ball.vy *= -ball.bounce; }
-
-            // Canale di lancio (Parete a x=360) con invito curvo in alto
-            if (ball.x > 360 && ball.x < 364 && ball.y > 100) {
-                if (ball.vx < 0) { ball.x = 360 - ball.radius; ball.vx *= -ball.bounce; }
+            // --- FOOLPROOF SHOOTER LANE GUIDANCE SYSTEM ---
+            // Locks the ball inside the launcher lane tightly, then flings it smoothly left at the apex.
+            if (ball.x > 390 && ball.y > 50) {
+                ball.x = 405; 
+                ball.vx = 0;  
+            }
+            if (ball.x > 390 && ball.y <= 50 && ball.vy < 0) {
+                ball.vx = -7.5; 
+                ball.vy = -2.0;
             }
 
-            // Collisioni Bumpers
-            bumpers.forEach(bumper => {
-                let dx = ball.x - bumper.x;
-                let dy = ball.y - bumper.y;
-                let dist = Math.sqrt(dx * dx + dy * dy);
+            // Standard Motion Integration
+            ball.vy += physics.gravity; ball.x += ball.vx; ball.y += ball.vy;
 
-                if (dist < ball.radius + bumper.radius) {
-                    let nx = dx / dist;
-                    let ny = dy / dist;
-                    ball.x = bumper.x + nx * (ball.radius + bumper.radius);
-                    ball.y = bumper.y + ny * (ball.radius + bumper.radius);
+            // Velocity Capping Guard
+            let currentSpeed = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy);
+            if (currentSpeed > physics.maxVelocity) {
+                ball.vx = (ball.vx / currentSpeed) * physics.maxVelocity;
+                ball.vy = (ball.vy / currentSpeed) * physics.maxVelocity;
+            }
 
-                    let dot = ball.vx * nx + ball.vy * ny;
-                    ball.vx = (ball.vx - 2 * dot * nx) * 1.4;
-                    ball.vy = (ball.vy - 2 * dot * ny) * 1.4;
+            // Append trail log
+            ballTrail.push({x: ball.x, y: ball.y});
+            if (ballTrail.length > 8) ballTrail.shift();
 
-                    score += bumper.points;
-                    scoreDisplay.innerText = `Punti: ${score}`;
+            leftFlipper.angle += (leftFlipper.targetAngle - leftFlipper.angle) * 0.45;
+            rightFlipper.angle += (rightFlipper.targetAngle - rightFlipper.angle) * 0.45;
+
+            // Compute Static Wall Collisions
+            staticWalls.forEach(wall => checkSegmentCollision(wall, 1.0));
+
+            // --- DROP TARGETS MATRIX DETECTION ---
+            dropTargets.forEach(target => {
+                if (!target.active) return;
+                let closestX = Math.max(target.x, Math.min(ball.x, target.x + target.w));
+                let closestY = Math.max(target.y, Math.min(ball.y, target.y + target.h));
+                let distX = ball.x - closestX; let distY = ball.y - closestY;
+                let distance = Math.sqrt(distX * distX + distY * distY);
+
+                if (distance < ball.radius) {
+                    target.active = false;
+                    score += 300 * multiplier; scoreUI.innerText = score;
+                    ball.vx *= -1.2; 
+                    spawnParticles(closestX, closestY, target.color, 10);
+
+                    if (dropTargets.every(t => !t.active)) {
+                        score += 2000 * multiplier; scoreUI.innerText = score;
+                        spawnParticles(20, 220, '#00ffcc', 18);
+                        setTimeout(() => dropTargets.forEach(t => t.active = true), 1200);
+                    }
                 }
             });
 
-            // Collisione alette
-            checkFlipperCollision(leftFlipper);
-            checkFlipperCollision(rightFlipper);
-
-            // Controllo della caduta (Perdere una vita)
-            if (ball.y > canvas.height) {
-                lives--;
-                livesDisplay.innerText = `Vite: ${lives}`;
-                
-                if (lives <= 0) {
-                    gameOver = true;
-                } else {
-                    resetBall();
+            // --- KINETIC SPINNER GATE REACTION ---
+            if (spinner.activeTimer > 0) spinner.activeTimer--;
+            let sDistX = ball.x - spinner.x; let sDistY = ball.y - spinner.y;
+            let sDist = Math.sqrt(sDistX * sDistX + sDistY * sDistY);
+            if (sDist < spinner.length + ball.radius && Math.abs(ball.x - spinner.x) < 15 && Math.abs(ball.y - spinner.y) < ball.radius + 4) {
+                if (Math.abs(ball.vy) > 1.2) {
+                    spinner.angularVelocity = Math.abs(ball.vy) * 0.6;
+                    spinner.activeTimer = 10;
+                    score += 50 * multiplier; scoreUI.innerText = score;
+                    spawnParticles(spinner.x, spinner.y, '#00ffff', 4);
                 }
+            }
+            spinner.angle += spinner.angularVelocity;
+            spinner.angularVelocity *= 0.96; // Spin Friction Degradation
+
+            // Slingshot Collisions
+            slingshots.forEach(sling => {
+                if(sling.activeTimer > 0) sling.activeTimer--;
+                let hitA = checkSegmentCollision({x1: sling.points[0].x, y1: sling.points[0].y, x2: sling.points[1].x, y2: sling.points[1].y}, 1.5);
+                let hitB = checkSegmentCollision({x1: sling.points[1].x, y1: sling.points[1].y, x2: sling.points[2].x, y2: sling.points[2].y}, 1.1);
+                if (hitA || hitB) {
+                    sling.activeTimer = 6; score += 50 * multiplier; scoreUI.innerText = score;
+                    ball.vx += sling.kickDir.x * 6.5; ball.vy += sling.kickDir.y * 6.5;
+                    spawnParticles(ball.x, ball.y, '#ffaa00', 10);
+                }
+            });
+
+            // Active Neon Bumper Collisions
+            bumpers.forEach(bumper => {
+                if (bumper.activeTimer > 0) bumper.activeTimer--;
+                let dx = ball.x - bumper.x; let dy = ball.y - bumper.y;
+                let distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance < ball.radius + bumper.radius) {
+                    let nx = dx / distance; let ny = dy / distance;
+                    ball.x = bumper.x + nx * (ball.radius + bumper.radius); ball.y = bumper.y + ny * (ball.radius + bumper.radius);
+                    let dot = ball.vx * nx + ball.vy * ny;
+                    ball.vx = (ball.vx - 2 * dot * nx) * 1.45; ball.vy = (ball.vy - 2 * dot * ny) * 1.45;
+                    bumper.activeTimer = 8; score += bumper.points * multiplier; scoreUI.innerText = score;
+                    spawnParticles(bumper.x, bumper.y, bumper.glow, 14);
+                }
+            });
+
+            checkFlipperCollision(leftFlipper); checkFlipperCollision(rightFlipper);
+
+            // Matrix Rollover Lanes Tracking
+            lanes.forEach(lane => {
+                if (ball.y > lane.y - 12 && ball.y < lane.y + 12 && ball.x > lane.x1 && ball.x < lane.x2) {
+                    if (!lane.hit) {
+                        lane.hit = true; score += 500 * multiplier; scoreUI.innerText = score;
+                        spawnParticles((lane.x1 + lane.x2)/2, lane.y, '#ffea00', 8);
+                        if (lanes.every(l => l.hit)) {
+                            multiplier = multiplier === 1 ? 2 : multiplier === 2 ? 3 : 5;
+                            multiplierUI.innerText = multiplier + "X";
+                            setTimeout(() => lanes.forEach(l => l.hit = false), 1200);
+                        }
+                    }
+                }
+            });
+
+            // Particles Vector Loop
+            for (let i = particles.length - 1; i >= 0; i--) {
+                let p = particles[i]; p.x += p.vx; p.y += p.vy; p.life -= p.decay;
+                if (p.life <= 0) particles.splice(i, 1);
+            }
+
+            // Out of Bounds Outhole Check
+            if (ball.y > canvas.height + 20) {
+                lives--; livesUI.innerText = lives;
+                if (lives <= 0) gameOver = true; else resetBall();
             }
         }
 
         function draw() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // Effetto Neon Generale per gli elementi luminosi
-            ctx.shadowBlur = 0; 
-
-            // Linea del canale di lancio e curva superiore per indirizzare la palla
-            ctx.strokeStyle = '#333366';
-            ctx.lineWidth = 4;
-            ctx.beginPath();
-            ctx.moveTo(360, canvas.height);
-            ctx.lineTo(360, 100);
-            ctx.arcTo(360, 30, 300, 30, 40); // Curva che devia la palla a sinistra
-            ctx.stroke();
-
-            // Pareti di invito in basso (i triangoli sopra le alette per far scivolare la palla)
-            ctx.strokeStyle = '#222244';
-            ctx.lineWidth = 3;
-            // Sinistra
-            ctx.beginPath(); ctx.moveTo(0, 450); ctx.lineTo(80, 500); ctx.lineTo(0, 500); ctx.stroke();
-            // Destra
-            ctx.beginPath(); ctx.moveTo(400, 450); ctx.lineTo(300, 500); ctx.lineTo(400, 500); ctx.stroke();
-
-            // Disegna Bumpers Luminosi
-            bumpers.forEach(bumper => {
-                ctx.shadowBlur = 15;
-                ctx.shadowColor = bumper.glow;
-                ctx.fillStyle = bumper.color;
-                ctx.beginPath();
-                ctx.arc(bumper.x, bumper.y, bumper.radius, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.strokeStyle = '#fff';
-                ctx.lineWidth = 2;
-                ctx.stroke();
+            // 1. Static Frame Geometry Wireframe
+            ctx.strokeStyle = '#15152d'; ctx.lineWidth = 3;
+            staticWalls.forEach(wall => {
+                ctx.beginPath(); ctx.moveTo(wall.x1, wall.y1); ctx.lineTo(wall.x2, wall.y2); ctx.stroke();
             });
 
-            // Disegna Alette con Neon
-            ctx.shadowBlur = 10;
-            ctx.shadowColor = '#00ffcc';
-            ctx.strokeStyle = '#00ffcc';
-            ctx.lineWidth = 8;
-            ctx.lineCap = 'round';
-            
-            // Sx
-            ctx.beginPath();
-            ctx.moveTo(leftFlipper.x, leftFlipper.y);
+            // 2. Drop Targets Grid Node
+            dropTargets.forEach(target => {
+                if (!target.active) return;
+                ctx.fillStyle = target.color;
+                ctx.shadowBlur = 8; ctx.shadowColor = target.color;
+                ctx.fillRect(target.x, target.y, target.w, target.h);
+                ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.strokeRect(target.x, target.y, target.w, target.h);
+            });
+            ctx.shadowBlur = 0;
+
+            // 3. Kinetic Spinner Gate Rotation Node
+            ctx.save(); ctx.translate(spinner.x, spinner.y); ctx.rotate(spinner.angle);
+            ctx.strokeStyle = spinner.activeTimer > 0 ? '#ffffff' : '#00ffff'; ctx.lineWidth = 4;
+            ctx.shadowBlur = spinner.activeTimer > 0 ? 14 : 5; ctx.shadowColor = '#00ffff';
+            ctx.beginPath(); ctx.moveTo(0, -spinner.length/2); ctx.lineTo(0, spinner.length/2); ctx.stroke();
+            ctx.restore(); ctx.shadowBlur = 0;
+
+            // 4. Score Trigger Rollover Lanes
+            lanes.forEach(lane => {
+                ctx.strokeStyle = lane.hit ? '#ffffff' : '#20203d'; ctx.lineWidth = 4;
+                ctx.beginPath(); ctx.moveTo(lane.x1, lane.y); ctx.lineTo(lane.x2, lane.y); ctx.stroke();
+                ctx.fillStyle = lane.hit ? lane.color : '#13132b'; ctx.font = 'bold 11px Arial';
+                ctx.fillText(lane.label, (lane.x1 + lane.x2)/2 - 3, lane.y - 10);
+            });
+
+            // 5. Active Kinetic Slingshot Triangles
+            slingshots.forEach(sling => {
+                ctx.fillStyle = sling.activeTimer > 0 ? '#ffffff' : '#0e0e24';
+                ctx.strokeStyle = sling.activeTimer > 0 ? '#ffaa00' : '#2b2b5e'; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.moveTo(sling.points[0].x, sling.points[0].y);
+                ctx.lineTo(sling.points[1].x, sling.points[1].y); ctx.lineTo(sling.points[2].x, sling.points[2].y);
+                ctx.closePath(); ctx.fill(); ctx.stroke();
+            });
+
+            // 6. Round Active Bumpers
+            bumpers.forEach(bumper => {
+                ctx.shadowBlur = bumper.activeTimer > 0 ? 25 : 12; ctx.shadowColor = bumper.glow;
+                ctx.fillStyle = bumper.activeTimer > 0 ? '#ffffff' : bumper.color;
+                ctx.beginPath(); ctx.arc(bumper.x, bumper.y, bumper.radius, 0, Math.PI * 2); ctx.fill();
+                ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+            });
+            ctx.shadowBlur = 0;
+
+            // 7. Kinetic Flippers
+            ctx.lineWidth = 8; ctx.lineCap = 'round'; ctx.shadowBlur = 10; ctx.shadowColor = '#00ffcc'; ctx.strokeStyle = '#00ffcc';
+            ctx.beginPath(); ctx.moveTo(leftFlipper.x, leftFlipper.y);
             ctx.lineTo(leftFlipper.x + Math.cos(leftFlipper.angle) * leftFlipper.length, leftFlipper.y + Math.sin(leftFlipper.angle) * leftFlipper.length);
             ctx.stroke();
-
-            // Dx
-            ctx.beginPath();
-            ctx.moveTo(rightFlipper.x, rightFlipper.y);
+            ctx.beginPath(); ctx.moveTo(rightFlipper.x, rightFlipper.y);
             ctx.lineTo(rightFlipper.x + Math.cos(rightFlipper.angle) * rightFlipper.length, rightFlipper.y + Math.sin(rightFlipper.angle) * rightFlipper.length);
             ctx.stroke();
-
-            // Molla di lancio (visiva)
             ctx.shadowBlur = 0;
-            ctx.fillStyle = '#ff00ff';
-            ctx.fillRect(372, 580 + plungerPlunge, 16, 20 - plungerPlunge);
 
-            // Disegna Pallina (Effetto metallico lucido)
-            ctx.shadowBlur = 8;
-            ctx.shadowColor = '#fff';
-            ctx.fillStyle = '#ffffff';
-            ctx.beginPath();
-            ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
-            ctx.fill();
+            // 8. Mechanical Spring Plunger Asset
+            ctx.fillStyle = '#ff0055'; ctx.fillRect(398, 620 + plungerForce, 14, 30 - plungerForce);
 
-            // Schermata di Game Over
+            // 9. Particle Tracking Graphics Engine
+            particles.forEach(p => {
+                ctx.fillStyle = p.color; ctx.globalAlpha = p.life; ctx.fillRect(p.x, p.y, 2.5, 2.5);
+            });
+            ctx.globalAlpha = 1.0;
+
+            // 10. Motion Blur Trail Effect
+            ballTrail.forEach((t, idx) => {
+                ctx.fillStyle = `rgba(255, 255, 255, ${idx / 20})`; ctx.beginPath();
+                ctx.arc(t.x, t.y, ball.radius * (0.5 + (idx / ballTrail.length) * 0.5), 0, Math.PI * 2); ctx.fill();
+            });
+
+            // 11. Core Metallic Solid Ball Component
+            ctx.shadowBlur = 6; ctx.shadowColor = '#fff'; ctx.fillStyle = '#ffffff';
+            ctx.beginPath(); ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2); ctx.fill();
+            ctx.shadowBlur = 0;
+
+            // 12. Context Game Over Overlay Dialog Shield
             if (gameOver) {
-                ctx.shadowBlur = 0;
-                ctx.fillStyle = 'rgba(10, 10, 26, 0.85)';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                
-                ctx.fillStyle = '#ff0055';
-                ctx.font = 'bold 36px Arial';
-                ctx.textAlign = 'center';
-                ctx.fillText("GAME OVER", canvas.width / 2, canvas.height / 2 - 20);
-                
-                ctx.fillStyle = '#fff';
-                ctx.font = '16px Arial';
-                ctx.fillText(`Punteggio Finale: ${score}`, canvas.width / 2, canvas.height / 2 + 20);
-                ctx.fillText("Premi SPAZIO per rigiocare", canvas.width / 2, canvas.height / 2 + 60);
-                ctx.textAlign = 'start'; // reset
+                ctx.fillStyle = 'rgba(4, 4, 10, 0.94)'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#ff0055'; ctx.font = 'bold 32px Consolas'; ctx.textAlign = 'center';
+                ctx.fillText("GAME OVER", canvas.width / 2, canvas.height / 2 - 30);
+                ctx.fillStyle = '#ffffff'; ctx.font = '16px Consolas';
+                ctx.fillText(`FINAL SCORE: ${score}`, canvas.width / 2, canvas.height / 2 + 10);
+                ctx.fillStyle = '#00ffcc'; ctx.fillText("PRESS SPACE TO RESTART", canvas.width / 2, canvas.height / 2 + 50);
+                ctx.textAlign = 'start';
             }
         }
 
-        function gameLoop() {
-            update();
-            draw();
-            requestAnimationFrame(gameLoop);
-        }
-
+        function gameLoop() { update(); draw(); requestAnimationFrame(gameLoop); }
         gameLoop();
     </script>
 </body>
