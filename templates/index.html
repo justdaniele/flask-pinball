@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flask Pinball Game</title>
+    <style>
+        body {
+            background-color: #222;
+            color: white;
+            font-family: 'Arial', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+        }
+        h1 {
+            margin-bottom: 10px;
+        }
+        #gameContainer {
+            position: relative;
+        }
+        canvas {
+            background: #111;
+            border: 4px solid #444;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.8);
+        }
+        .controls {
+            margin-top: 15px;
+            font-size: 14px;
+            color: #aaa;
+            text-align: center;
+        }
+        .key {
+            background: #444;
+            color: #fff;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Flask Pinball</h1>
+    <div id="gameContainer">
+        <canvas id="pinballCanvas" width="400" height="600"></canvas>
+    </div>
+    
+    <div class="controls">
+        Controlli: <span class="key">Freccia Sinistra</span> Aletta Sx | 
+        <span class="key">Freccia Destra</span> Aletta Dx | 
+        <span class="key">Spazio</span> Lancia Pallina / Reset
+    </div>
+
+    <script>
+        const canvas = document.getElementById('pinballCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Stato del Gioco
+        let score = 0;
+        let gameOver = false;
+
+        // Fisica della Pallina
+        let ball = {
+            x: 380,
+            y: 550,
+            vx: 0,
+            vy: 0,
+            radius: 10,
+            gravity: 0.2,
+            bounce: 0.6
+        };
+
+        // Ostacoli / Respingenti (Bumpers)
+        const bumpers = [
+            { x: 120, y: 150, radius: 25, color: '#ff3366', points: 100 },
+            { x: 280, y: 150, radius: 25, color: '#ff3366', points: 100 },
+            { x: 200, y: 250, radius: 30, color: '#33ccff', points: 200 }
+        ];
+
+        // Alette (Flipper)
+        let leftFlipper = { x: 120, y: 520, length: 60, angle: 0.3, targetAngle: 0.3, baseAngle: 0.3, upAngle: -0.4, side: 'left' };
+        let rightFlipper = { x: 280, y: 520, length: 60, angle: Math.PI - 0.3, targetAngle: Math.PI - 0.3, baseAngle: Math.PI - 0.3, upAngle: Math.PI + 0.4, side: 'right' };
+
+        // Input da tastiera
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowLeft') leftFlipper.targetAngle = leftFlipper.upAngle;
+            if (e.key === 'ArrowRight') rightFlipper.targetAngle = rightFlipper.upAngle;
+            if (e.key === ' ' || e.key === 'Spacebar') {
+                if (gameOver) {
+                    resetGame();
+                } else if (ball.x > 360 && ball.y > 500) {
+                    // Lancio iniziale (se la pallina è nel canale di destra)
+                    ball.vy = -12;
+                    ball.vx = -1 - Math.random() * 2;
+                }
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (e.key === 'ArrowLeft') leftFlipper.targetAngle = leftFlipper.baseAngle;
+            if (e.key === 'ArrowRight') rightFlipper.targetAngle = rightFlipper.baseAngle;
+        });
+
+        function resetGame() {
+            ball.x = 380;
+            ball.y = 550;
+            ball.vx = 0;
+            ball.vy = 0;
+            score = 0;
+            gameOver = false;
+        }
+
+        // Funzione per calcolare la collisione segmento-cerchio (per le alette)
+        function checkFlipperCollision(flipper) {
+            let tipX = flipper.x + Math.cos(flipper.angle) * flipper.length;
+            let tipY = flipper.y + Math.sin(flipper.angle) * flipper.length;
+
+            // Vettore aletta
+            let dx = tipX - flipper.x;
+            let dy = tipY - flipper.y;
+            let lenSq = dx * dx + dy * dy;
+
+            // Proiezione della pallina sul segmento dell'aletta
+            let t = ((ball.x - flipper.x) * dx + (ball.y - flipper.y) * dy) / lenSq;
+            t = Math.max(0, Math.min(1, t)); // Vincola al segmento
+
+            let closestX = flipper.x + t * dx;
+            let closestY = flipper.y + t * dy;
+
+            let distDx = ball.x - closestX;
+            let distDy = ball.y - closestY;
+            let distance = Math.sqrt(distDx * distDx + distDy * distDy);
+
+            if (distance < ball.radius) {
+                // Spingi fuori la pallina
+                let nx = distDx / distance;
+                let ny = distDy / distance;
+                ball.x = closestX + nx * ball.radius;
+                ball.y = closestY + ny * ball.radius;
+
+                // Calcola velocità di rimbalzo + spinta del movimento dell'aletta
+                let speed = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy);
+                let flipperVelocity = (flipper.targetAngle !== flipper.baseAngle) ? -10 : 2;
+                
+                ball.vx = nx * (speed * ball.bounce + Math.abs(flipperVelocity) * 0.5);
+                ball.vy = ny * (speed * ball.bounce + Math.abs(flipperVelocity));
+            }
+        }
+
+        // Aggiornamento logica di gioco
+        function update() {
+            if (gameOver) return;
+
+            // Applica gravità
+            ball.vy += ball.gravity;
+            ball.x += ball.vx;
+            ball.y += ball.vy;
+
+            // Movimento fluido delle alette verso l'angolo target
+            leftFlipper.angle += (leftFlipper.targetAngle - leftFlipper.angle) * 0.4;
+            rightFlipper.angle += (rightFlipper.targetAngle - rightFlipper.angle) * 0.4;
+
+            // Collisioni con i muri perimetrali
+            if (ball.x - ball.radius < 0) { ball.x = ball.radius; ball.vx *= -ball.bounce; }
+            if (ball.x + ball.radius > canvas.width) { ball.x = canvas.width - ball.radius; ball.vx *= -ball.bounce; }
+            if (ball.y - ball.radius < 0) { ball.y = ball.radius; ball.vy *= -ball.bounce; }
+
+            // Canale di lancio (muro divisorio destro a x=360)
+            if (ball.x > 360 && ball.x < 365 && ball.y > 150) {
+                if (ball.vx < 0) { ball.x = 360 - ball.radius; ball.vx *= -ball.bounce; }
+                else if (ball.vx > 0) { ball.x = 365 + ball.radius; ball.vx *= -ball.bounce; }
+            }
+
+            // Collisioni con i Bumpers (Respingenti circolari)
+            bumpers.forEach(bumper => {
+                let dx = ball.x - bumper.x;
+                let dy = ball.y - bumper.y;
+                let dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist < ball.radius + bumper.radius) {
+                    // Angolo di impatto
+                    let nx = dx / dist;
+                    let ny = dy / dist;
+
+                    // Posiziona fuori dal bumper
+                    ball.x = bumper.x + nx * (ball.radius + bumper.radius);
+                    ball.y = bumper.y + ny * (ball.radius + bumper.radius);
+
+                    // Rifletti la velocità e dai una spinta extra (effetto molla)
+                    let dot = ball.vx * nx + ball.vy * ny;
+                    ball.vx = (ball.vx - 2 * dot * nx) * 1.3;
+                    ball.vy = (ball.vy - 2 * dot * ny) * 1.3;
+
+                    score += bumper.points;
+                }
+            });
+
+            // Collisioni con le Alette
+            checkFlipperCollision(leftFlipper);
+            checkFlipperCollision(rightFlipper);
+
+            // Game Over (La pallina cade in fondo)
+            if (ball.y > canvas.height) {
+                gameOver = true;
+            }
+        }
+
+        // Rendering grafico
+        function draw() {
+            // Sfondo
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Canale di lancio (linea estetica)
+            ctx.strokeStyle = '#444';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(360, canvas.height);
+            ctx.lineTo(360, 150);
+            ctx.stroke();
+
+            // Disegna Bumpers
+            bumpers.forEach(bumper => {
+                ctx.fillStyle = bumper.color;
+                ctx.beginPath();
+                ctx.arc(bumper.x, bumper.y, bumper.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            });
+
+            // Disegna Aletta Sinistra
+            ctx.strokeStyle = '#00ffcc';
+            ctx.lineWidth = 8;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(leftFlipper.x, leftFlipper.y);
+            ctx.lineTo(leftFlipper.x + Math.cos(leftFlipper.angle) * leftFlipper.length, leftFlipper.y + Math.sin(leftFlipper.angle) * leftFlipper.length);
+            ctx.stroke();
+
+            // Disegna Aletta Destra
+            ctx.strokeStyle = '#00ffcc';
+            ctx.beginPath();
+            ctx.moveTo(rightFlipper.x, rightFlipper.y);
+            ctx.lineTo(rightFlipper.x + Math.cos(rightFlipper.angle) * rightFlipper.length, rightFlipper.y + Math.sin(rightFlipper.angle) * rightFlipper.length);
+            ctx.stroke();
+
+            // Disegna Pallina
+            ctx.fillStyle = '#fff';
+            ctx.beginPath();
+            ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Interfaccia Testo (Punteggio)
+            ctx.fillStyle = '#fff';
+            ctx.font = '20px Arial';
+            ctx.fillText(`Score: ${score}`, 20, 40);
+
+            if (gameOver) {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#ff3333';
+                ctx.font = '40px Arial';
+                ctx.fillText("GAME OVER", canvas.width / 2 - 120, canvas.height / 2);
+                ctx.fillStyle = '#fff';
+                ctx.font = '20px Arial';
+                ctx.fillText("Premi SPAZIO per ricominciare", canvas.width / 2 - 130, canvas.height / 2 + 50);
+            }
+        }
+
+        // Game Loop principale
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Avvia il gioco
+        gameLoop();
+    </script>
+</body>
+</html>
